@@ -1,3 +1,5 @@
+> 当前状态以 README / SESSION 为准：模型客户端已支持方舟 Responses；规划器仍是规则实现。下文的 DeepSeek 标注为历史默认，当前 UI 已移除精排开关。部分组件仍依赖具体实现，工具上下文有 search_knowledge 专用分支，不能理解为完全解耦。
+
 # ARCHITECTURE.md — DocAgent 架构文档
 
 ## 概述

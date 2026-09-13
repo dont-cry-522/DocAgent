@@ -1,3 +1,5 @@
+> 2026-09-13：HTTP/SSE 对外契约保持不变，内部增加方舟 Responses 适配。rerank 请求字段当前未参与运行时开关；retrieval_ms 实际包含模型生成时间；会话详情尚不返回完整引用快照。
+
 # API.md — DocAgent REST API 文档
 
 Base URL: `http://127.0.0.1:8000/api`

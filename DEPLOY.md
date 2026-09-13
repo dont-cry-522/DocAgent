@@ -1,3 +1,5 @@
+> 2026-09-13：当前验证的是本地 uvicorn + 前端构建/代理。下述 Docker/云部署步骤尚未重新验收；Dockerfile 没有构建前端且 .dockerignore 排除了 web/dist，不能保证页面可用。持久化还需覆盖 data/ 数据库目录。先按 README / GUIDE 配置本地运行。
+
 # 部署指南
 
 ## 方案 A：本地运行（开发 / 个人使用）

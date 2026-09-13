@@ -10,17 +10,21 @@ export default function DocumentsPage() {
   const [uploading, setUploading] = useState(false)
   const [rebuilding, setRebuilding] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = useCallback(async () => {
+    setLoading(true)
+    setLoadFailed(false)
     try {
       const [docs, st] = await Promise.all([listDocuments(), getStats()])
       setDocuments(docs)
       setStats(st)
     } catch {
-      // ignore
-    }
+      setLoadFailed(true)
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => {
@@ -28,6 +32,7 @@ export default function DocumentsPage() {
   }, [loadData])
 
   const handleUpload = async (file: File) => {
+    if (uploading) return
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
     if (!ALLOWED_EXTS.includes(ext)) {
       setError(`不支持的文件格式: .${ext}，支持: ${ALLOWED_EXTS.map(e => '.' + e).join(', ')}`)
@@ -89,9 +94,9 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
+    <div className="documents-page flex-1 overflow-y-auto p-8">
       <div className="max-w-4xl mx-auto">
-        <h2 className="text-xl font-semibold text-gray-800 mb-6">知识库文档</h2>
+        <div className="documents-heading"><div><h2>文档资料库</h2><p>管理用于问答的文档，支持上传、查看和删除。</p></div></div>
 
         {stats && (
           <div className="grid grid-cols-3 gap-4 mb-8">
@@ -101,7 +106,7 @@ export default function DocumentsPage() {
             </div>
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <p className="text-2xl font-bold text-gray-800">{stats.chunk_count}</p>
-              <p className="text-sm text-gray-500 mt-1">Chunk 总数</p>
+              <p className="text-sm text-gray-500 mt-1">知识片段</p>
             </div>
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <p className="text-2xl font-bold text-gray-800">{formatSize(stats.total_size)}</p>
@@ -114,14 +119,20 @@ export default function DocumentsPage() {
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-10 text-center mb-8 transition-colors cursor-pointer ${
+          role="button"
+          tabIndex={uploading ? -1 : 0}
+          aria-label="上传文档"
+          aria-disabled={uploading}
+          onKeyDown={(e) => { if (!uploading && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); fileInputRef.current?.click() } }}
+          onClick={() => { if (!uploading) fileInputRef.current?.click() }}
+          className={`upload-zone border-2 border-dashed rounded-xl p-10 text-center mb-8 transition-colors cursor-pointer ${
             dragOver ? 'border-gray-900 bg-gray-100' : 'border-gray-300 hover:border-gray-400 bg-white'
           }`}
         >
           <input
             ref={fileInputRef}
             type="file"
+            disabled={uploading}
             accept=".md,.txt,.pdf,.docx,.html,.htm"
             onChange={handleFileSelect}
             className="hidden"
@@ -159,26 +170,26 @@ export default function DocumentsPage() {
           </h3>
           <button
             onClick={handleRebuild}
-            disabled={rebuilding}
+            disabled={rebuilding || loading || loadFailed || documents.length === 0}
             className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
           >
             {rebuilding ? '重建中...' : '重建全部索引'}
           </button>
         </div>
 
-        {documents.length === 0 ? (
+        {loading ? <div className="document-state" role="status">正在读取文档…</div> : loadFailed ? <div className="document-state"><strong>暂时无法读取资料库</strong><p>请确认本地服务已启动，然后重新加载。</p><button className="source-toggle" onClick={loadData}>重新加载</button></div> : documents.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-            <p className="text-gray-400 text-sm">暂无文档，上传 Markdown 文件开始构建知识库</p>
+            <p className="text-gray-400 text-sm">还没有资料，上传第一份文档开始探索</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left px-4 py-3 font-medium text-gray-500">文件名</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">格式</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">大小</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500">Chunks</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-500">知识片段</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">上传时间</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">操作</th>
                 </tr>
@@ -203,7 +214,7 @@ export default function DocumentsPage() {
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500">{formatSize(doc.file_size)}</td>
                     <td className="px-4 py-3 text-right">
-                      <span className="inline-block px-2 py-0.5 text-xs rounded bg-violet-50 text-violet-700 font-medium">
+                      <span className="inline-block px-2 py-0.5 text-xs rounded bg-neutral-50 text-neutral-700 font-medium">
                         {doc.chunk_count}
                       </span>
                     </td>

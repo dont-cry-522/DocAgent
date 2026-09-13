@@ -30,11 +30,12 @@ class DeepSeekLLM:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
-        model: str = "deepseek-chat",
+        model: str | None = None,
     ):
         self.api_key = api_key or settings.deepseek_api_key
         self.base_url = (base_url or settings.deepseek_base_url).rstrip("/")
-        self.model = model
+        self.model = model or settings.deepseek_model
+        self.chat_path = settings.deepseek_chat_path.lstrip("/")
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=httpx.Timeout(60.0, connect=10.0),
@@ -54,6 +55,9 @@ class DeepSeekLLM:
     ) -> str:
         """发送 Chat 请求，返回 LLM 生成的文本"""
 
+        if settings.deepseek_api_mode == "responses":
+            return self._responses_chat(system_prompt, user_message, max_tokens)
+
         payload = {
             "model": self.model,
             "messages": [
@@ -65,7 +69,7 @@ class DeepSeekLLM:
             "stream": False,
         }
 
-        response = self._client.post("/v1/chat/completions", json=payload)
+        response = self._client.post(self.chat_path, json=payload)
         response.raise_for_status()
         data = response.json()
 
@@ -86,6 +90,10 @@ class DeepSeekLLM:
             {"type": "finish", "usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
             {"type": "error", "message": "..."}
         """
+        if settings.deepseek_api_mode == "responses":
+            yield from self._responses_stream(system_prompt, user_message, max_tokens)
+            return
+
         payload = {
             "model": self.model,
             "messages": [
@@ -99,7 +107,7 @@ class DeepSeekLLM:
 
         usage = {}
         try:
-            with self._client.stream("POST", "/v1/chat/completions", json=payload) as response:
+            with self._client.stream("POST", self.chat_path, json=payload) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if not line or line.startswith(":"):
@@ -122,5 +130,58 @@ class DeepSeekLLM:
                                 "total_tokens": chunk["usage"].get("total_tokens", 0),
                             }
                 yield {"type": "finish", "usage": usage}
+        except Exception as exc:
+            yield {"type": "error", "message": str(exc)}
+
+    def _responses_payload(self, system_prompt, user_message, max_tokens, stream=False):
+        return {
+            "model": self.model,
+            "input": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_output_tokens": max_tokens,
+            "stream": stream,
+        }
+
+    def _responses_chat(self, system_prompt, user_message, max_tokens):
+        response = self._client.post("responses", json=self._responses_payload(system_prompt, user_message, max_tokens))
+        response.raise_for_status()
+        data = response.json()
+        if data.get("status") != "completed":
+            raise RuntimeError("Model response did not complete: " + str(data.get("status")))
+        text = "".join(part.get("text", "") for item in data.get("output", [])
+                       if item.get("type") == "message" for part in item.get("content", [])
+                       if part.get("type") == "output_text")
+        if not text:
+            raise RuntimeError("Model returned no answer text")
+        return text
+
+    def _responses_stream(self, system_prompt, user_message, max_tokens):
+        import json
+        try:
+            with self._client.stream("POST", "responses", json=self._responses_payload(system_prompt, user_message, max_tokens, True)) as response:
+                response.raise_for_status()
+                for line in response.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    if line == "data: [DONE]":
+                        break
+                    event = json.loads(line[6:])
+                    kind = event.get("type")
+                    if kind == "response.output_text.delta":
+                        yield {"type": "token", "content": event.get("delta", "")}
+                    elif kind == "response.completed":
+                        usage = event.get("response", {}).get("usage", {})
+                        yield {"type": "finish", "usage": {
+                            "prompt_tokens": usage.get("input_tokens", 0),
+                            "completion_tokens": usage.get("output_tokens", 0),
+                            "total_tokens": usage.get("total_tokens", 0),
+                        }}
+                        return
+                    elif kind in ("response.failed", "response.incomplete", "error"):
+                        yield {"type": "error", "message": "Model response failed or was truncated (" + kind + ")"}
+                        return
+                yield {"type": "error", "message": "Model stream ended before completion"}
         except Exception as exc:
             yield {"type": "error", "message": str(exc)}

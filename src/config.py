@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL"
     )
 
+    deepseek_api_mode: str = Field(default="chat", alias="DEEPSEEK_API_MODE")
+    deepseek_model: str = Field(default="deepseek-chat", alias="DEEPSEEK_MODEL")
+    deepseek_chat_path: str = Field(default="v1/chat/completions", alias="DEEPSEEK_CHAT_PATH")
+
     # ── Embedding 模型 ─────────────────────────
     embedding_model_name: str = Field(
         default="BAAI/bge-small-zh-v1.5", alias="EMBEDDING_MODEL_NAME"

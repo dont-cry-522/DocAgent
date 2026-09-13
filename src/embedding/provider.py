@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from src.config import settings
 
 
 # ── 抽象基类 ─────────────────────────────────────
@@ -56,9 +57,9 @@ class BGEProvider(EmbeddingProvider):
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-small-zh-v1.5",
+        model_name: str | None = None,
     ):
-        self._model_name = model_name
+        self._model_name = model_name or settings.embedding_model_name
         self._model: SentenceTransformer | None = None
 
     def _load_model(self) -> SentenceTransformer:

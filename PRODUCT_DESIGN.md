@@ -1,3 +1,5 @@
+> 本文件是设计方案，包含尚未实现的功能和数据结构；不是完成清单。2026-09-13 当前状态见 README.md 与 SESSION.md。
+
 # DocAgent: Enterprise Knowledge Agent
 
 ## 产品设计文档 v1.0

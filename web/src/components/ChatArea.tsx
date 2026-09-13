@@ -9,9 +9,9 @@ import CitationPanel from './CitationPanel'
 const API_BASE = '/api'
 
 const EXAMPLE_QUESTIONS = [
-  'MCP 是什么，和 REST API 有什么区别',
-  'FastAPI 的请求验证怎么实现',
-  'Python 异步编程的核心概念',
+  '帮我总结文档中的核心观点',
+  '对比资料中的不同方案与适用场景',
+  '从文档中找出具体步骤和注意事项',
 ]
 
 interface ChatAreaProps {
@@ -24,7 +24,8 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
   const [status, setStatus] = useState<StreamStatus>('idle')
   const [streamingText, setStreamingText] = useState('')
   const [activeCitations, setActiveCitations] = useState<SearchResultItem[]>([])
-  const [rerank, setRerank] = useState(true)
+  const [rerank] = useState(false)
+  const [showSources, setShowSources] = useState(false)
   const [citationW, setCitationW] = useState(320)
   const [convId, setConvId] = useState(conversationId)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -62,7 +63,8 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
   const handleCitationDrag = (e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
-    const onMove = (ev: MouseEvent) => setCitationW(w => Math.max(200, Math.min(500, w - (ev.clientX - startX))))
+    const startWidth = citationW
+    const onMove = (ev: MouseEvent) => setCitationW(Math.max(240, Math.min(440, startWidth - (ev.clientX - startX))))
     const onUp = () => {
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
@@ -77,7 +79,7 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
 
   const handleSend = useCallback(async (text?: string) => {
     const q = (text || input).trim()
-    if (!q || (status !== 'idle' && status !== 'done')) return
+    if (!q || ['thinking', 'searching', 'generating'].includes(status)) return
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -172,7 +174,7 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
   }, [input, status, rerank, convId])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSend()
     }
@@ -191,14 +193,14 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
       rehypePlugins={[rehypeHighlight]}
       components={{
         a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-300 hover:decoration-indigo-600 transition-colors">
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-neutral-600 underline decoration-neutral-300 hover:decoration-neutral-600 transition-colors">
             {children}
           </a>
         ),
         code: ({ className, children, ...props }) => {
           const isInline = !className
           if (isInline) {
-            return <code className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[0.8125rem] font-mono" {...props}>{children}</code>
+            return <code className="bg-neutral-50 text-neutral-700 px-1.5 py-0.5 rounded text-[0.8125rem] font-mono" {...props}>{children}</code>
           }
           return <code className={className} {...props}>{children}</code>
         },
@@ -208,34 +210,30 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
     </ReactMarkdown>
   )
 
-  const isBusy = status !== 'idle' && status !== 'done'
+  const isBusy = ['thinking', 'searching', 'generating'].includes(status)
 
   return (
-    <div className="flex-1 flex h-full min-w-0">
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
+    <div className="chat-layout flex-1 flex min-h-0 min-w-0">
+      <div className={`chat-main flex-1 flex flex-col min-w-0 ${messages.length === 0 && status === "idle" ? "empty-chat" : ""}`}>
+        <div className="chat-toolbar"><span>新对话</span><button className="source-toggle" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>引用来源 <span>{activeCitations.length}</span></button></div>
         {messages.length === 0 && status === 'idle' ? (
-          <div className="flex-1 flex items-center justify-center px-8">
-            <div className="text-center max-w-lg w-full -mt-16">
-              <div className="w-12 h-12 bg-gray-900 rounded-2xl mx-auto mb-6 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </div>
+          <div className="welcome-area flex-1 flex items-center justify-center px-8">
+            <div className="welcome-content text-center w-full">
               <h2 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">
-                有什么可以帮助你的？
+                从文档中找答案
               </h2>
               <p className="text-gray-500 text-sm mb-8">
-                向你的本地知识库提问，获取基于文档的精准回答
+                输入问题，或先在左侧上传需要查阅的资料。
               </p>
 
-              <div className="flex flex-wrap justify-center gap-2">
-                {EXAMPLE_QUESTIONS.map((q) => (
+              <div className="suggestion-grid">
+                {EXAMPLE_QUESTIONS.map((q, i) => (
                   <button
                     key={q}
-                    onClick={() => handleSend(q)}
-                    className="px-4 py-2.5 text-sm text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors cursor-pointer text-left max-w-[280px] leading-snug"
+                    onClick={() => { setInput(q); textareaRef.current?.focus() }}
+                    className="suggestion-card"
                   >
-                    {q}
+                    {["总结要点", "对比方案", "提取步骤"][i]}
                   </button>
                 ))}
               </div>
@@ -247,21 +245,21 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
               {messages.map((msg) => (
                 <div key={msg.id} className="flex gap-3">
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                    msg.role === 'user' ? 'bg-gray-900' : 'bg-indigo-100'
+                    msg.role === 'user' ? 'bg-gray-900' : 'bg-neutral-100'
                   }`}>
                     {msg.role === 'user' ? (
                       <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                     ) : (
-                      <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     {msg.role === 'assistant' && msg.rewrittenQuery && (
-                      <div className="text-xs text-indigo-400 mb-1.5">
+                      <div className="text-xs text-neutral-400 mb-1.5">
                         改写查询：{msg.rewrittenQuery}
                       </div>
                     )}
@@ -282,8 +280,8 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
                         )}
                         {msg.citations && msg.citations.length > 0 && (
                           <button
-                            onClick={() => setActiveCitations(msg.citations!)}
-                            className="text-indigo-500 hover:text-indigo-700 font-medium transition-colors cursor-pointer"
+                            onClick={() => { setActiveCitations(msg.citations!); setShowSources(true) }}
+                            className="text-neutral-500 hover:text-neutral-700 font-medium transition-colors cursor-pointer"
                           >
                             {msg.citations.length} 条引用
                           </button>
@@ -299,17 +297,17 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
 
               {isBusy && (
                 <div className="flex gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="w-7 h-7 rounded-lg bg-neutral-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex gap-1">
-                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" />
-                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
-                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+                        <span className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" />
+                        <span className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
+                        <span className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
                       </div>
                       <span className="text-sm text-gray-400">
                         {status === 'thinking' && '分析中'}
@@ -344,33 +342,24 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
           </div>
         )}
 
-        <div className="border-t border-gray-100 bg-white px-6 py-4">
+        <div className="composer-area px-6 py-4">
           <div className="max-w-3xl mx-auto">
-            <div className="relative flex items-end gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+            <div className="composer relative flex items-end gap-3 rounded-2xl px-5 py-3.5">
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+                placeholder="向你的知识库提问…"
+                aria-label="输入问题"
                 disabled={isBusy}
                 rows={1}
                 className="flex-1 bg-transparent outline-none text-base text-gray-800 placeholder-gray-400 resize-none disabled:opacity-50 max-h-40"
               />
               <div className="flex items-center gap-1.5 shrink-0">
+                <span className="knowledge-badge">基于文档</span>
                 <button
-                  onClick={() => setRerank(!rerank)}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-lg transition-colors cursor-pointer ${
-                    rerank
-                      ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                      : 'bg-white text-gray-400 border border-gray-200 hover:text-gray-600'
-                  }`}
-                  title="启用 Reranker 精排可提高准确性，但增加约 1s 延迟"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${rerank ? 'bg-indigo-500' : 'bg-gray-300'}`} />
-                  Rerank
-                </button>
-                <button
+                  aria-label="发送问题"
                   onClick={() => handleSend()}
                   disabled={isBusy || !input.trim()}
                   className="p-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
@@ -388,27 +377,26 @@ export default function ChatArea({ conversationId }: ChatAreaProps) {
                 </button>
               </div>
             </div>
-            {rerank && (
-              <p className="text-[11px] text-gray-400 text-center mt-2">
-                Reranker 已启用 · 精排使结果更准确
-              </p>
-            )}
+<p className="composer-hint">Enter 发送 · Shift + Enter 换行<span>回答供参考，请结合原文核实</span></p>
           </div>
         </div>
       </div>
 
+      {showSources && <>
       <div
-        className="w-1.5 bg-gray-200 hover:bg-indigo-400 active:bg-indigo-400 transition-colors shrink-0 cursor-col-resize relative"
+        className="citation-resizer w-1.5 bg-gray-200 hover:bg-neutral-400 active:bg-neutral-400 transition-colors shrink-0 cursor-col-resize relative"
         onMouseDown={handleCitationDrag}
       >
         <div className="absolute inset-y-0 -left-1 -right-1" />
       </div>
-      <div style={{ width: citationW, minWidth: 200, maxWidth: 500 }} className="shrink-0">
+      <div style={{ width: citationW, minWidth: 200, maxWidth: 500 }} className="citation-shell shrink-0">
+        <button className="source-close" aria-label="收起引用来源" onClick={() => setShowSources(false)}>✕</button>
         <CitationPanel
           citations={activeCitations}
           onViewSource={(c) => setActiveCitations([c])}
         />
       </div>
+      </>}
     </div>
   )
 }
